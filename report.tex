@@ -1,0 +1,454 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[greek,english]{babel}
+\usepackage{alphabeta} 
+\usepackage[pdftex]{graphicx}
+\usepackage[top=1in, bottom=1in, left=1in, right=1in]{geometry}
+
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{gensymb}
+\usepackage[skip=0pt]{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{titlesec}
+\usepackage{wrapfig}
+\usepackage[most]{tcolorbox}
+\usepackage{varwidth}
+
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{booktabs}
+
+\usepackage{listings}
+
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    pdftitle={Overleaf Example},
+    pdfpagemode=FullScreen,
+}
+
+\urlstyle{same}
+
+
+\linespread{1.06}
+\setlength{\parskip}{8pt plus2pt minus2pt}
+\widowpenalty 10000
+\clubpenalty 10000
+
+\newcommand{\change}[1]{\underline{#1}}
+\newcommand{\HRule}{\rule{\linewidth}{0.5mm}}
+\newcommand{\defbox}[1]{
+    {\begin{figure*}[tbh]
+        \begin{center}
+        \setlength{\protowidth}{\textwidth}
+        \addtolength{\protowidth}{-3\intextsep}
+
+        \fcolorbox{black}{white}{
+                \small
+                \hbox{\quad
+                \begin{minipage}{\protowidth}
+            
+                #1
+                \end{minipage}
+                \quad}
+                }
+        \end{center}
+        \vspace{-4ex}
+        \end{figure*}
+        } }
+
+\newcolumntype{P}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{M}[1]{>{\centering\arraybackslash}m{#1}}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  language=C,
+  showstringspaces=false,
+  commentstyle=\color{gray}\upshape,
+  frame=single,
+  frameround=tttt,
+  xleftmargin=0em,
+  xrightmargin=em,
+}
+
+\begin{document}
+
+\begin{titlepage}
+    \begin{center}
+        \includegraphics[width=0.60\textwidth]{logo.jpg}~\\[2cm]
+        \HRule \\[0.4cm]
+        { \LARGE 
+          \textbf{COL380: Introduction to Parallel and Distributed Programming}\\[0.4cm]
+          \textbf{Assignment-3 Report}\\[0.4cm]
+        }
+        \HRule \\[1.5cm]
+        { \large
+          \textbf{Prof. Subodh Kumar} \\[0.1cm]
+        }
+        \vfill
+        { \large
+          Ankit Mehra (2019CS10329)\\[0.1cm]
+          Souvagya Ranjan Sethi (2019CS10405)\\[0.1cm]
+        }\\[0.4cm]
+        % \HRule \\[1.5cm]
+        \textsc{\large Department of Computer Science \& Engineering}\\[0.6cm]
+        {\large \today}
+    \end{center}
+\end{titlepage}
+
+
+\newpage
+\section{Task-1}
+\subsection{Algorithm and Approach}
+We are given a simple, undirected and unweighted graph G=(V,E), and were asked to find the maximal k-truss for different k values in a given range. a k-truss of graph G is a subgraph, H in which each edge is part of at least $(k - 2)$ triangles within H.
+In other words, every edge in the k-truss is part of at least (k - 2) triangles made up of edged and vertices of that truss.
+We attempted numerous algorithms for this task given in the assignment statements and in different papers, but finally we implemented a modified approach, which is a combination of different approaches. Detailed approach is given bewlo. 
+\vspace{-4mm}
+\subsubsection{Approach for this task} 
+\vspace{-2mm}
+\begin{enumerate}
+    \item \textbf{Division of vertices: }We read the graph in distributed settings i.e., In process - 0, we first read all the vertices and their respective degrees and then sorted the vertices according to their degrees. Then according to number of process, we divided the vertices to different process in a round robin fashion (using their degree), so that workload assigned to each process should be almost equal. We used MPI\_Bcast to send this information to all processes. 
+
+    \item \textbf{Reading Subgraph: }Then, from each process, we read all the neighbours of all the vertices that are assigned to each process. So, each process have a subgraph, on which it will do all the computations and information about the parent of each vertex and each edge. we ensured that each edge will be processed by only one processor (by using the heuristic that is given in \href{https://link.springer.com/chapter/10.1007/978-3-319-96983-1_50}{this paper}). 
+
+    \item \textbf{Support Computation: }We found the support and triangle(i.e. all supporting vertices) for an edge in distributed manner. Since, each process have a subgraph, so each processor will find the support of all the edges assigned to it only. The algorithm used to find the support for an edge is given below:
+
+    \begin{algorithm}
+    \caption{Algorithm to Find support and Triangles for an edge}
+    \label{algo1}
+        \begin{algorithmic}[1]
+            \REQUIRE subgraph assigned to this process, $G'$
+            \STATE // Each process will perform this for their respective edges.
+            \FOR{All monotonic edge = (u,v) in $G'$}
+                \STATE Initialize an empty vector to store all queries of form(u,v,w).
+                \STATE Add all w's (neighbour of u) to vector such that edge(u,w) is monotonic.
+                \STATE Use MPI\_Alltoallv to communicate all queries for edge(u,v) and to recv the\\ corresponding response. 
+                \STATE According to recvd response, update the support and triangles 
+            \ENDFOR
+            \STATE \textbf{OUTPUT: } support and triangle for each edge 
+        \end{algorithmic}
+    \end{algorithm}
+
+    \newpage
+    \item \textbf{Truss Computation: }After computing support and triangles for all processes, we have used \textbf{MPI\_Gatherv} to collect support and triangles from each process into process-0. Now, Since process-0 Then, the remaining computation of finding K-Truss for all k values has been done by process-0 only. For finding K-truss for a particular value of K, following approach has been used:
+
+        \begin{itemize}
+            \item Firstly, we are reading the whole graph in process-0, which is then modified using different functions to find k-truss.
+            
+            \item We found all the edges having support value less than (k - 2) and marked them as \textit{deletable}. Pseudo code for this step is given in \textit{\textbf{Initialize}} function.
+            
+            \item Then we filtered the edges by taking \textit{deletable} as the starting point. Filtering of edges is done using \textbf{OpenMP}. We used \textit{\#pragma omp for} to divide the iteration of the for loop among the threads. Since, code inside the for  loop is modifying some shared variables, so to prevent the ddeadlocks, we used locks by \textit{critical sections pragma}. In the \textit{\textbf{FilterEdges}} function, we run the infinite loop which run till there is an edge to delete. Code snippet is given below.
+            
+            \item Finally, we deleted all the redundant vertices i.e., removed all the vertices who has degree 0 from the graph resulting the k-truss for a particular k-value.
+        \end{itemize}
+\end{enumerate}
+
+\begin{center}
+    \begin{minipage}{0.9\linewidth}
+        \begin{lstlisting}[gobble=8]
+        void FilterEdges(graph, k, deletable, support_map, triangle_map)
+            while (True)
+                if (deletable.empty()) : break
+                Initialise newDeletable
+                #pragma omp parallel for
+                for (int i = 0; i < deletable.size(); i++):
+                    edge (u,v) = deletable[i]
+                    if (u,v) not in graph : continue
+                    #pragma omp critical{
+                        G = G - edge (u,v)
+                    }
+                    vertices_UV = Supporting Vertices of (u,v)
+                    for all w in vertices_UV :        
+                        #pragma omp critical
+                        {
+                            if edge (u,w) in graph and in supportMap :
+                                supportMap[uw]--
+                                triangleMap[uw].erase(v)
+                                if (support_map[uw] < k-2) :
+                                    newDeletable.push_back(uw)
+                            if edge (v,w) in graph and in supportMap : 
+                                supportMap[vw]--
+                                triangleMap[vw].erase(u)
+                                if (support_map[vw] < k-2) :
+                                    newDeletable.push_back(vw)
+                        }                  
+                #pragma omp critical {deletable = newDeletable};
+        \end{lstlisting}
+    \end{minipage}
+\end{center}
+
+
+% \newpage
+\subsection{Analysis}
+We have done the analysis using testcase-1 which was given in piazza. Also, we have used hpc server for running the code and finding the time.\\
+Description of the test case: 
+\item \textbf{Nodes (V)} = 50,000
+\vspace{-3mm}
+\item \textbf{Edges (E)} = 5,48,220
+\vspace{-3mm}
+\item \textbf{range of K} = [3, 10]
+
+\subsubsection{num\_t = 2, Varying p}
+
+    \begin{table}[h]
+        \centering
+        \begin{tabular}{ | M{3cm} | M{4cm} | M{4cm} | }
+        \hline
+        \textbf{No. of Processor} & \textbf{Time (s) [verbose=0]}  & \textbf{Time (s) [verbose=1]} \\ 
+        \hline
+        2   &  55.303    &  57.691  \\ \hline
+        4   &  40.790    &  43.786  \\ \hline
+        6   &  35.132    &  38.164  \\ \hline
+        8   &  32.094    &  35.032  \\ \hline
+        10  &  29.913    &  32.704  \\ \hline
+        12  &  28.209    &  30.917  \\ \hline        
+    \end{tabular}
+        \vspace{10pt}
+        \caption{No. of Process vs Time}
+        \label{table1}
+    \end{table}
+
+    \begin{center}
+        \begin{minipage}{0.48\linewidth}
+            \includegraphics[width=\linewidth,height=8cm]{t1g1.png}
+            \captionof{figure}{Verbose=0}
+        \end{minipage}%
+        \hfill
+        \begin{minipage}{0.48\linewidth}
+        \includegraphics[width=\linewidth,height=8cm]{t1g2.png}
+        \captionof{figure}{verbose=1}
+        \end{minipage}
+        \captionof{figure}{Constant num\_t=2}
+        \label{graph-1}
+    \end{center}
+    
+
+\newpage
+\subsubsection{Constant p=8, Varying num\_t}
+Description of both test cases:
+\vspace{-1mm}
+    \begin{center}
+            \begin{minipage}{0.5\linewidth}
+                \textbf{test case-1} \\
+                \textbf{Nodes (V)} = 50,000\\
+                \textbf{Edges (E)} = 5,48,220\\
+                \textbf{range of K} = [3, 10]
+            \end{minipage}%
+            \hfill
+            \begin{minipage}{0.5\linewidth}
+                \textbf{test case-2} \\
+                \textbf{Nodes (V)} = 1,00,000\\
+                \textbf{Edges (E)} = 6,25,317\\
+                \textbf{range of K} = [4, 8]         
+            \end{minipage}
+    \end{center}
+
+\vspace{-3mm}
+
+    \begin{table}[h]
+        \centering
+        \begin{tabular}{ | M{3cm} | M{3cm} | M{3cm} | }
+        \hline
+        \textbf{No of Threads} & \textbf{Time (s) testcase-1 }  & \textbf{Time (s) testcase-3} \\ 
+        \hline
+        2   &  37.045  &  24.519   \\ \hline
+        4   &  36.783  &  24.325   \\ \hline
+        6   &  36.540  &  24.283   \\ \hline
+        8   &  34.488  &  23.519   \\ \hline      
+    \end{tabular}
+        \vspace{5pt}
+        \caption{No of Threads vs Time}
+        \label{table2}
+    \end{table}
+
+
+    \begin{center}
+        \begin{minipage}{0.48\linewidth}
+            \includegraphics[width=\linewidth,height=8cm]{test1n.png}
+            \captionof{figure}{testcase-1}
+        \end{minipage}%
+        \hfill
+        \begin{minipage}{0.48\linewidth}
+        \includegraphics[width=\linewidth,height=8cm]{test3n.png}
+        \captionof{figure}{testcase-3}
+        \end{minipage}
+        \captionof{figure}{Constant p=8}
+        \label{graph-2}
+    \end{center}
+    
+
+\subsection{Observations} 
+\begin{itemize}
+    \item \textbf{Constant num\_t=2 :} In first case, we kept the num\_t constant and varied number of processors(p) and found the execution time. From the graph \ref{graph-1}, we can see that as the number of processors are increasing, the execution time is continuously decreasing, which is expected because more number of processor will result in less workload to individual process.
+
+    \item \textbf{Constant p=8 :} In this case, we kept the number of processor constant throughout and varied num\_t from 2 to 8 and noted the execution time. From graph \ref{graph-2}, one can observe that for both test cases, execution time is continuously increasing with increasing num\_t, this could be because in the portion of code where \textit{openmp} is used, we also used used critical 
+\end{itemize}
+
+\subsection{Iso-Efficiency}
+According to our estimate, the iso-efficiency of this is $O(p^{2})$. This is because on running the experiments, when we were doubling the number of threads, we had to double the size of input as well. Overall, isoefficiency is an important consideration when designing parallel algorithms, as it can help determine the maximum number of processors that can be effectively used to solve a given problem.
+
+\subsection{Sequential section}
+For calculating the sequential portion of the code, we use the formula 
+$$f = \frac{\frac{1}{s} - \frac{1}{p}}{1 - \frac{1}{p}}$$ 
+In our implementation, we have accumulated the support map by process with rank0 and used it to find to the k-truss for the whole graph. So, this part is only done by one process. 
+Also, during writing the output into the file, we are doing this by only one process which increases the sequantial portion of the code.
+
+\subsection{Scaling of the code}
+Our implementation scales on increasing the size of the input graph. Also, we have distribution the computation among processes. So, as the number of processes increase, the computation time decreases. Thus the computation load is distributed among the processes making the code scalable.
+
+\newpage
+\section{Task - 2}
+\subsection{Algorithm and Approach}
+For this task, we were asked to find the influencer vertices. The influencer vertices refer to the vertices that are connected to at least \emph{p} (input argument) k-truss components. The influencer vertex can itself be part of a k-truss component. For this task, we need to find the Ego-network for each influencer vertex. The Ego-network of an individual influencer vertex v is a subgraph of G
+formed by all v’s neighbors. In this task, we find the k-truss for endK for the given problem.
+
+\subsubsection{Approach for this task}
+    \begin{enumerate}
+        \item First, we find the K-truss for k = endK. as described in task1 in rank0. The truss is stored in the form of connected components (vector<set<int>>).
+        \item Then we Send the Connected Components to all processes by using MPI\_Send.
+        \item All the process have their respective sub-graphs. So, on receiving the K-truss connected components, they create the influencerMap which stores the index of the connected component(group) that is influenced by the vertex. 
+        \item We then filter out the vertices which influence more than \emph{P} connected components.
+    \end{enumerate}
+
+\vspace{-3mm}
+\subsection{Analysis}
+\vspace{-4mm}
+We have done the analysis using testcase-1 which was given in piazza. Also, we have used hpc server for running the code and finding the time.\\
+Description of the test case: 
+\vspace{-4mm}
+\item \textbf{Nodes (V)} = 50,000
+\vspace{-3mm}
+\item \textbf{Edges (E)} = 5,48,220
+\vspace{-3mm}
+\item \textbf{range of K} = [3, 10]
+\vspace{-8mm}
+\subsubsection{num\_t = 2, Varying p}
+
+    
+    \begin{table}
+        \centering
+        \begin{tabular}{ | M{3cm} | M{4cm} | M{4cm} | }
+        \hline
+        \textbf{No. of Processor} & \textbf{Time (s) [verbose=1]}  \\ 
+        \hline
+        2   &  48.791  \\ \hline
+        4   &  36.512  \\ \hline
+        6   &  30.773  \\ \hline
+        8   &  27.744  \\ \hline
+        10  &  25.910  \\ \hline
+        12  &  25.022  \\ \hline        
+    \end{tabular}
+        \vspace{10pt}
+        \caption{No. of Process vs Time}
+        \label{table1}
+    \end{table}
+
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.7\textwidth,height=6cm]{t2g1.png}\hfill
+        \caption{num_t = 2}
+    \end{figure}
+
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.7\textwidth,height=6cm]{t2g2.png}\hfill
+        \caption{no of P=8}
+    \end{figure}
+
+
+    % \begin{center}
+    %     \begin{minipage}{0.48\linewidth}
+    %         \includegraphics[width=\linewidth,height=8cm]{t2g1.png}
+    %         \captionof{figure}{Verbose=0}
+    %     \end{minipage}%
+    %     \hfill
+    
+    %     \begin{minipage}{0.48\linewidth}
+    %     \includegraphics[width=\linewidth,height=8cm]{pV1.png}
+    %     \captionof{figure}{verbose=1}
+    %     \end{minipage}
+    %     \captionof{figure}{Constant num\_t=2}
+    %     \label{graph-1}
+    % \end{center}
+    
+
+% \newpage
+% \subsubsection{Constant p=8, Varying num\_t}
+% Description of both test cases:
+% \vspace{-1mm}
+%     \begin{center}
+%             \begin{minipage}{0.5\linewidth}
+%                 \textbf{test case-1} \\
+%                 \textbf{Nodes (V)} = 50,000\\
+%                 \textbf{Edges (E)} = 5,48,220\\
+%                 \textbf{range of K} = [3, 10]
+%             \end{minipage}%
+%             \hfill
+%             \begin{minipage}{0.5\linewidth}
+%                 \textbf{test case-2} \\
+%                 \textbf{Nodes (V)} = 1,00,000\\
+%                 \textbf{Edges (E)} = 6,25,317\\
+%                 \textbf{range of K} = [4, 8]         
+%             \end{minipage}
+%     \end{center}
+
+% \vspace{-3mm}
+
+    \begin{table}[h]
+        \centering
+        \begin{tabular}{ | M{3cm} | M{3cm} | M{3cm} | }
+        \hline
+        \textbf{No of Threads} & \textbf{Time (s) testcase-1 } \\ 
+        \hline
+        2   &  27.601   \\ \hline
+        4   &  28.774   \\ \hline
+        6   &  28.140   \\ \hline
+        8   &  28.057   \\ \hline      
+    \end{tabular}
+        \vspace{5pt}
+        \caption{No of Threads vs Time}
+        \label{table2}
+    \end{table}
+
+
+%     \begin{center}
+%         \begin{minipage}{0.48\linewidth}
+%             \includegraphics[width=\linewidth,height=8cm]{t2g1.png}
+%             \captionof{figure}{testcase-1}
+%         \end{minipage}%
+%         \hfill
+%         \begin{minipage}{0.48\linewidth}
+%         \includegraphics[width=\linewidth,height=8cm]{t2g2.png}
+%         \captionof{figure}{testcase-3}
+%         \end{minipage}
+%         \captionof{figure}{Constant p=8}
+%         \label{graph-2}
+%     \end{center}
+
+\newpage
+\subsection{Iso-Efficiency}[h]
+According to our estimate, the iso-efficiency of this is $O(p^{2})$. This is because on running the experiments, when we were doubling the number of threads, we had to double the size of input as well. Overall, isoefficiency is an important consideration when designing parallel algorithms, as it can help determine the maximum number of processors that can be effectively used to solve a given problem.
+
+\subsection{Sequential portion of Code}
+In task2, again similar to the task1, we calculate the k-truss in process with rank0. It accumulates to the sequential portion of the code. Also, each process after finder the influencer map send them to rank0. Then rank0 processes them and find what to write to the output file.
+$$f = \frac{\frac{1}{s} - \frac{1}{p}}{1 - \frac{1}{p}}$$ 
+Using this function, the sequential portion of the code was found to be 
+
+\subsection{Scalability of the Code}
+Our code scales well we increase the size of input. Also this will give better efficiency as we are increasing the size of the input. With increasing number of processors the load will also get distributed in efficient manner and this will increase the effect of distrubuting the load among different processors. All in all our code scales well.
+
+\end {document}
+    
+
+      
+    
